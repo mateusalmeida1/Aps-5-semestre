@@ -9,6 +9,7 @@ Responsabilidades:
   - Registrar todas as mensagens em log.txt com timestamp
 """
 
+import argparse
 import socket
 import threading
 import datetime
@@ -130,7 +131,9 @@ def handle_client(conn: socket.socket, addr: tuple) -> None:
                 break
 
             elif message == "/online":
-                send_to(conn, list_online())
+                online_list = list_online()
+                send_to(conn, online_list)
+                log_message(f"/online solicitado por {username}: {online_list}")
 
             elif message.startswith("/msg "):
                 # Formato: /msg <usuário> <mensagem>
@@ -180,6 +183,14 @@ def handle_client(conn: socket.socket, addr: tuple) -> None:
 def main() -> None:
     """Inicializa e executa o servidor."""
     global client_thread_count
+
+    parser = argparse.ArgumentParser(description="Servidor de chat TCP/IP")
+    parser.add_argument("--host", default=HOST, help=f"Endereço de escuta (padrão: {HOST})")
+    parser.add_argument("--port", type=int, default=PORT, help=f"Porta de escuta (padrão: {PORT})")
+    args = parser.parse_args()
+    host = args.host
+    port = args.port
+
     # Cria o arquivo de log se ainda não existir
     if not os.path.exists(LOG_FILE):
         with open(LOG_FILE, "w", encoding="utf-8"):
@@ -187,10 +198,10 @@ def main() -> None:
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind((HOST, PORT))
+    server.bind((host, port))
     server.listen()
 
-    print(f"[*] Servidor iniciado em {HOST}:{PORT}")
+    print(f"[*] Servidor iniciado em {host}:{port}")
     print(f"[*] Logs salvos em: {os.path.abspath(LOG_FILE)}")
 
     try:

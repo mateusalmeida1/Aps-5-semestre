@@ -10,6 +10,7 @@ Funcionalidades:
       /msg <u> <msg> → enviar mensagem privada para <u>
 """
 
+import argparse
 import socket
 import threading
 import sys
@@ -82,6 +83,13 @@ def register(conn: socket.socket) -> None:
 
 def main() -> None:
     """Ponto de entrada do cliente de chat."""
+    parser = argparse.ArgumentParser(description="Cliente de chat TCP/IP")
+    parser.add_argument("--host", default=HOST, help=f"Endereço IP do servidor (padrão: {HOST})")
+    parser.add_argument("--port", type=int, default=PORT, help=f"Porta do servidor (padrão: {PORT})")
+    args = parser.parse_args()
+    host = args.host
+    port = args.port
+
     print("=" * 45)
     print("   Chat TCP/IP — Sistema de Inspeção")
     print("=" * 45)
@@ -89,13 +97,13 @@ def main() -> None:
     # Cria e conecta o socket ao servidor
     try:
         conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        conn.connect((HOST, PORT))
+        conn.connect((host, port))
     except ConnectionRefusedError:
-        print(f"[!] Não foi possível conectar ao servidor {HOST}:{PORT}.")
+        print(f"[!] Não foi possível conectar ao servidor {host}:{port}.")
         print("    Verifique se o servidor está em execução.")
         sys.exit(1)
 
-    print(f"[+] Conectado ao servidor {HOST}:{PORT}\n")
+    print(f"[+] Conectado ao servidor {host}:{port}\n")
 
     # Fase de registro (bloqueante, sequencial)
     register(conn)
