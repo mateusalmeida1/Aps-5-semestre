@@ -21,6 +21,27 @@ PORT = 5000          # Deve coincidir com o PORT do servidor
 ALERTA_VALIDOS = ("NORMAL", "ALERTA", "CRÍTICO", "CRITICO")
 
 
+def ask_server_address() -> tuple[str, int]:
+    """Pergunta host/porta e retorna valores válidos com fallback para padrão."""
+    host_input = input(f"Host do servidor [{HOST}]: ").strip()
+    host = host_input or HOST
+
+    while True:
+        port_input = input(f"Porta do servidor [{PORT}]: ").strip()
+        if not port_input:
+            return host, PORT
+        try:
+            port = int(port_input)
+        except ValueError:
+            print("[!] Porta inválida. Digite um número (ex.: 5000).")
+            continue
+
+        if 1 <= port <= 65535:
+            return host, port
+
+        print("[!] Porta fora do intervalo válido (1-65535).")
+
+
 def receive_messages(conn: socket.socket, stop_event: threading.Event) -> None:
     """
     Thread de recebimento: fica em loop recebendo mensagens do servidor
@@ -86,16 +107,18 @@ def main() -> None:
     print("   Chat TCP/IP — Sistema de Inspeção")
     print("=" * 45)
 
+    host, port = ask_server_address()
+
     # Cria e conecta o socket ao servidor
     try:
         conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        conn.connect((HOST, PORT))
+        conn.connect((host, port))
     except ConnectionRefusedError:
-        print(f"[!] Não foi possível conectar ao servidor {HOST}:{PORT}.")
+        print(f"[!] Não foi possível conectar ao servidor {host}:{port}.")
         print("    Verifique se o servidor está em execução.")
         sys.exit(1)
 
-    print(f"[+] Conectado ao servidor {HOST}:{PORT}\n")
+    print(f"[+] Conectado ao servidor {host}:{port}\n")
 
     # Fase de registro (bloqueante, sequencial)
     register(conn)
