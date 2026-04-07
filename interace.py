@@ -8,6 +8,7 @@ Como usar:
 
 from __future__ import annotations
 
+import argparse
 import queue
 import socket
 import threading
@@ -18,7 +19,7 @@ from tkinter import ttk
 
 
 class ChatApp:
-	def __init__(self, root: tk.Tk) -> None:
+	def __init__(self, root: tk.Tk, initial_values: dict[str, str] | None = None, auto_connect: bool = False) -> None:
 		self.root = root
 		self.root.title("Chat Ambiental TCP — Interface")
 		self.root.geometry("780x540")
@@ -30,13 +31,15 @@ class ChatApp:
 		self.ui_queue: queue.Queue[str] = queue.Queue()
 		self.connected = False
 		self.registered = False
+		self.auto_connect = auto_connect
+		initial_values = initial_values or {}
 
 		# ── Variáveis de UI ────────────────────────────────────────────────
-		self.host_var = tk.StringVar(value="127.0.0.1")
-		self.port_var = tk.StringVar(value="5000")
-		self.user_var = tk.StringVar()
-		self.local_var = tk.StringVar()
-		self.alerta_var = tk.StringVar(value="NORMAL")
+		self.host_var = tk.StringVar(value=str(initial_values.get("host", "127.0.0.1")))
+		self.port_var = tk.StringVar(value=str(initial_values.get("port", "5000")))
+		self.user_var = tk.StringVar(value=str(initial_values.get("user", "")))
+		self.local_var = tk.StringVar(value=str(initial_values.get("local", "")))
+		self.alerta_var = tk.StringVar(value=str(initial_values.get("alerta", "NORMAL")))
 		self.target_var = tk.StringVar()
 		self.private_var = tk.StringVar()
 
@@ -45,6 +48,8 @@ class ChatApp:
 
 		self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 		self.root.after(100, self.process_ui_queue)
+		if self.auto_connect:
+			self.root.after(400, self.auto_start)
 
 	def _build_ui(self) -> None:
 		container = ttk.Frame(self.root, padding=12)
@@ -194,6 +199,13 @@ class ChatApp:
 		self.append_chat(f"[+] Conectado ao servidor {host}:{port}")
 		self.append_chat("[*] Preencha o cadastro e clique em 'Entrar no chat'.")
 
+	def auto_start(self) -> None:
+		if self.connected:
+			return
+		self.connect()
+		if self.connected:
+			self.root.after(250, self.register)
+
 	def register(self) -> None:
 		if not self.connected or not self.conn or self.registered:
 			return
@@ -324,10 +336,10 @@ class ChatApp:
 		self.root.destroy()
 
 
-def main() -> None:
+def main(initial_values: dict[str, str] | None = None, auto_connect: bool = False) -> None:
 	_configure_tk_env_windows()
 	root = tk.Tk()
-	app = ChatApp(root)
+	app = ChatApp(root, initial_values=initial_values, auto_connect=auto_connect)
 	root.mainloop()
 
 
@@ -342,10 +354,16 @@ def _configure_tk_env_windows() -> None:
 	if os.environ.get("TCL_LIBRARY") and os.environ.get("TK_LIBRARY"):
 		return
 
-	base_python = sys.base_prefix  # ex.: C:\Users\...\Python313
-	tcl_dir = os.path.join(base_python, "tcl")
+	base_dir = sys._MEIPASS if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS") else sys.base_prefix
+	tcl_dir = os.path.join(base_dir, "tcl")
 	tcl_lib = os.path.join(tcl_dir, "tcl8.6")
 	tk_lib = os.path.join(tcl_dir, "tk8.6")
+
+	if not (os.path.isdir(tcl_lib) and os.path.isdir(tk_lib)):
+		base_python = sys.base_prefix  # ex.: C:\Users\...\Python313
+		tcl_dir = os.path.join(base_python, "tcl")
+		tcl_lib = os.path.join(tcl_dir, "tcl8.6")
+		tk_lib = os.path.join(tcl_dir, "tk8.6")
 
 	if os.path.isdir(tcl_lib) and os.path.isdir(tk_lib):
 		os.environ.setdefault("TCL_LIBRARY", tcl_lib)

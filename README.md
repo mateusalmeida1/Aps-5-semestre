@@ -28,9 +28,20 @@ O sistema permite comunicação em tempo real entre inspetores ambientais e uma 
 - servidor.py: servidor TCP multithread
 - cliente.py: cliente em modo terminal
 - interace.py: cliente com interface gráfica Tkinter
+- launcher.py: inicializador que abre servidor e dois clientes
 - log.txt: arquivo de log gerado pelo servidor
 
 ## Como executar (Windows + PowerShell)
+
+### Abrir tudo de uma vez
+
+Se você quiser iniciar o ambiente completo com um clique, execute o launcher:
+
+```powershell
+& ".\.venv\Scripts\python.exe" ".\launcher.py"
+```
+
+Ele abre o servidor em segundo plano e duas janelas de interface já prontas para cadastro, mas sem conectar automaticamente. Assim você pode ajustar nome, status e localização antes de entrar.
 
 ### 1. Ir para a pasta do projeto
 
@@ -116,6 +127,18 @@ Correto:
 - O cliente de terminal permite informar host/porta ao iniciar, sem editar código.
 - Para conexões remotas, use o IP da máquina do servidor ao abrir cliente.py ou interace.py.
 - O nível CRITICO (sem acento) também é aceito e normalizado para CRÍTICO.
+- O launcher abre dois clientes com cadastro automático para facilitar testes rápidos.
+
+## Gerar executável
+
+Para criar um `.exe` no Windows, instale o PyInstaller e gere o launcher:
+
+```powershell
+& ".\.venv\Scripts\python.exe" -m pip install pyinstaller
+& ".\.venv\Scripts\pyinstaller.exe" --onefile --noconsole --name ChatAmbiental ".\launcher.py"
+```
+
+O executável final ficará em `dist\ChatAmbiental.exe`.
 
 ## Conceitos aplicados
 
