@@ -13,6 +13,7 @@ import socket
 import threading
 import datetime
 import os
+import base64
 
 # ─── Configurações ────────────────────────────────────────────────────────────
 HOST = "0.0.0.0"   # Escuta em todas as interfaces de rede (necessário para aceitar clientes remotos)
@@ -152,6 +153,39 @@ def handle_client(conn: socket.socket, addr: tuple) -> None:
                         log_message(pm)
                         send_to(target_conn, pm)
                         send_to(conn, f"[PRIVADO para {target_name}]: {private_msg}")
+
+            elif message.startswith("/file "):
+                # Formato: /file <usuário> <arquivo> <base64>
+                # Observação: <arquivo> não pode conter espaços.
+                parts = message.split(" ", 3)
+                if len(parts) < 4:
+                    send_to(conn, "Uso: /file <usuário> <arquivo> <base64>")
+                else:
+                    target_name = parts[1].strip()
+                    filename = parts[2].strip()
+                    payload_b64 = parts[3].strip()
+
+                    # Validação simples para evitar payloads inválidos.
+                    try:
+                        base64.b64decode(payload_b64.encode("utf-8"), validate=True)
+                    except Exception:
+                        send_to(conn, "Falha: conteúdo de arquivo inválido (base64).")
+                        continue
+
+                    target_conn = None
+                    with clients_lock:
+                        for c, info in clients.items():
+                            if info["username"] == target_name:
+                                target_conn = c
+                                break
+
+                    if target_conn is None:
+                        send_to(conn, f"Usuário '{target_name}' não encontrado.")
+                    else:
+                        token = f"[[FILE]] {username} {filename} {payload_b64}"
+                        send_to(target_conn, token)
+                        send_to(conn, f"Arquivo '{filename}' enviado para {target_name}.")
+                        log_message(f"[ARQUIVO] {username} -> {target_name}: {filename}")
 
             else:
                 # Mensagem pública

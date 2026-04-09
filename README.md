@@ -12,8 +12,13 @@ O sistema permite comunicação em tempo real entre inspetores ambientais e uma 
 - Múltiplos usuários simultâneos
 - Mensagens públicas em tempo real
 - Mensagens privadas
+- Transferência de arquivos entre inspetores
 - Identificação de usuário e local
 - Níveis de alerta (NORMAL, ALERTA, CRÍTICO)
+- Cadastro/login fictício de agente na interface
+- Atalho de envio de relatório por e-mail
+- Captura de webcam e envio da imagem no chat (OpenCV opcional)
+- Canal multicast para alertas regionais
 - Registro de mensagens em log
 
 ## Tecnologias
@@ -84,7 +89,20 @@ Observação: para simular vários usuários, abra vários terminais e execute o
 
 - /online: lista usuários conectados
 - /msg <usuario> <mensagem>: envia mensagem privada
+- /file <usuario> <arquivo> <base64>: envia arquivo para usuário específico (usado pela interface)
 - /sair: desconecta do chat
+
+## Contexto de uso (inspeção ambiental)
+
+O fluxo da interface foi ajustado para um cenário de inspetores ambientais que monitoram
+atividades industriais potencialmente poluidoras do Rio Tietê, da nascente em Salesópolis
+até a Grande São Paulo.
+
+## Dependência opcional para webcam
+
+```powershell
+& ".\.venv\Scripts\python.exe" -m pip install opencv-python
+```
 
 ## Exemplo rápido de uso
 
