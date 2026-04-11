@@ -16,6 +16,8 @@ O sistema permite comunicação em tempo real entre inspetores ambientais e uma 
 - Identificação de usuário e local
 - Níveis de alerta (NORMAL, ALERTA, CRÍTICO)
 - Cadastro/login fictício de agente na interface
+- Histórico local das mensagens na interface gráfica
+- Filtro de mensagens por palavra-chave na interface gráfica
 - Atalho de envio de relatório por e-mail
 - Captura de webcam e envio da imagem no chat (OpenCV opcional)
 - Canal multicast para alertas regionais
@@ -91,6 +93,10 @@ Observação: para simular vários usuários, abra vários terminais e execute o
 - /msg <usuario> <mensagem>: envia mensagem privada
 - /file <usuario> <arquivo> <base64>: envia arquivo para usuário específico (usado pela interface)
 - /sair: desconecta do chat
+- /filtro <termo>: filtra a visualização local das mensagens no cliente de terminal
+- /filtro limpar: remove o filtro local do cliente de terminal
+- /historico: mostra o histórico local armazenado no cliente de terminal
+- /exportar [arquivo]: exporta o histórico local (respeitando o filtro atual) para .log/.txt no cliente de terminal
 
 ## Contexto de uso (inspeção ambiental)
 
@@ -143,9 +149,12 @@ Correto:
 ## Notas
 
 - O cliente de terminal permite informar host/porta ao iniciar, sem editar código.
+- O cliente de terminal também mantém histórico local e aceita filtro de mensagens com /filtro e /historico.
+- O cliente de terminal permite exportar o histórico local com /exportar (com nome automático ou caminho informado).
 - Para conexões remotas, use o IP da máquina do servidor ao abrir cliente.py ou interace.py.
 - O nível CRITICO (sem acento) também é aceito e normalizado para CRÍTICO.
 - O launcher abre dois clientes com cadastro automático para facilitar testes rápidos.
+- A interface gráfica mantém o histórico local das mensagens, permite filtro por palavra-chave e agora possui botão para exportação do histórico em arquivo.
 
 ## Gerar executável
 

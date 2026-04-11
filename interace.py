@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import datetime
 import json
 import os
 import queue
@@ -31,6 +32,17 @@ from urllib.parse import quote
 AUTH_FILE = "agents_auth.json"
 RECEIVED_DIR = "arquivos_recebidos"
 MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024  # 2 MB
+
+
+def send_line(conn: socket.socket, message: str) -> None:
+    conn.sendall(f"{message}\n".encode("utf-8"))
+
+
+def read_line(reader) -> str:
+    data = reader.readline()
+    if not data:
+        return ""
+    return data.strip()
 
 
 def configure_tk_env_windows() -> None:
@@ -177,6 +189,7 @@ class ChatApp:
         self.root.minsize(980, 680)
 
         self.conn: socket.socket | None = None
+        self.reader = None
         self.recv_thread: threading.Thread | None = None
         self.stop_event = threading.Event()
         self.ui_queue: queue.Queue[str] = queue.Queue()
@@ -186,6 +199,7 @@ class ChatApp:
         self.logged_in = False
         self.logged_agent_id = ""
         self.auto_connect = auto_connect
+        self.chat_history: list[tuple[str, str]] = []
 
         self.auth_store = AgentAuthStore()
         self.multicast = MulticastChannel(self.ui_queue.put)
@@ -213,6 +227,7 @@ class ChatApp:
         self.multi_group_var = tk.StringVar(value="224.1.1.1")
         self.multi_port_var = tk.StringVar(value="5007")
         self.multi_msg_var = tk.StringVar(value="Alerta de inspeção no trecho do Tiete")
+        self.chat_filter_var = tk.StringVar()
 
         self._configure_styles()
         self._build_ui()
@@ -379,6 +394,17 @@ class ChatApp:
         scroll.pack(fill="y", side="right")
         self.txt_chat.configure(yscrollcommand=scroll.set)
 
+        filter_frame = ttk.Frame(content, style="Card.TFrame")
+        filter_frame.pack(fill="x", pady=(8, 0))
+
+        ttk.Label(filter_frame, text="Filtro do chat:").pack(side="left")
+        filter_entry = ttk.Entry(filter_frame, textvariable=self.chat_filter_var)
+        filter_entry.pack(side="left", fill="x", expand=True, padx=(8, 8))
+        filter_entry.bind("<KeyRelease>", lambda _e: self.apply_chat_filter())
+
+        ttk.Button(filter_frame, text="Exportar histórico", command=self.export_chat_history).pack(side="left", padx=(0, 8))
+        ttk.Button(filter_frame, text="Limpar filtro", command=self.clear_chat_filter).pack(side="left")
+
         send_frame = ttk.Frame(content, style="Card.TFrame")
         send_frame.pack(fill="x", pady=(8, 0))
 
@@ -483,8 +509,21 @@ class ChatApp:
         self.entry_local.configure(state="disabled")
         self.cmb_alerta.configure(state="disabled")
 
-    def append_chat(self, text: str) -> None:
+    def _render_chat(self) -> None:
+        filter_text = self.chat_filter_var.get().strip().lower()
+
         self.txt_chat.configure(state="normal")
+        self.txt_chat.delete("1.0", "end")
+
+        for text, tag in self.chat_history:
+            if filter_text and filter_text not in text.lower():
+                continue
+            self.txt_chat.insert("end", f"{text}\n", tag)
+
+        self.txt_chat.see("end")
+        self.txt_chat.configure(state="disabled")
+
+    def append_chat(self, text: str) -> None:
         tag = "system"
         upper = text.upper()
         if "[!]" in text or "FALHA" in upper or "ERRO" in upper:
@@ -493,9 +532,47 @@ class ChatApp:
             tag = "self"
         elif "[ALERTA]" in upper or "[CRITICO]" in upper or "[CRÍTICO]" in upper:
             tag = "alert"
-        self.txt_chat.insert("end", f"{text}\n", tag)
-        self.txt_chat.see("end")
-        self.txt_chat.configure(state="disabled")
+        self.chat_history.append((text, tag))
+        self._render_chat()
+
+    def apply_chat_filter(self) -> None:
+        self._render_chat()
+
+    def clear_chat_filter(self) -> None:
+        self.chat_filter_var.set("")
+        self._render_chat()
+
+    def export_chat_history(self) -> None:
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        target = filedialog.asksaveasfilename(
+            title="Exportar histórico do chat",
+            defaultextension=".log",
+            initialfile=f"historico_chat_{timestamp}.log",
+            filetypes=[("Arquivo de log", "*.log"), ("Arquivo de texto", "*.txt"), ("Todos os arquivos", "*.*")],
+        )
+        if not target:
+            return
+
+        filter_text = self.chat_filter_var.get().strip().lower()
+        selected_lines = []
+        for text, _tag in self.chat_history:
+            if filter_text and filter_text not in text.lower():
+                continue
+            selected_lines.append(text)
+
+        try:
+            with open(target, "w", encoding="utf-8") as f:
+                f.write("Historico local da interface\n")
+                f.write(f"Gerado em: {datetime.datetime.now().isoformat(timespec='seconds')}\n")
+                f.write(f"Filtro ativo: {filter_text or 'nenhum'}\n")
+                f.write("-" * 40 + "\n")
+                for line in selected_lines:
+                    f.write(line + "\n")
+        except OSError as exc:
+            self.append_chat(f"[!] Falha ao exportar histórico: {exc}")
+            return
+
+        self.append_chat(f"[*] Histórico exportado para: {target}")
 
     def process_ui_queue(self) -> None:
         while True:
@@ -566,9 +643,11 @@ class ChatApp:
         try:
             self.conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.conn.connect((host, port))
+            self.reader = self.conn.makefile("r", encoding="utf-8", newline="\n")
         except OSError as exc:
             self.append_chat(f"[!] Falha ao conectar: {exc}")
             self.conn = None
+            self.reader = None
             return
 
         self.connected = True
@@ -610,20 +689,22 @@ class ChatApp:
 
     def _register_worker(self, username: str, localizacao: str, alerta: str) -> None:
         assert self.conn is not None
+        assert self.reader is not None
         conn = self.conn
+        reader = self.reader
         try:
-            conn.recv(4096)
-            conn.sendall(username.encode("utf-8"))
+            read_line(reader)
+            send_line(conn, username)
 
-            conn.recv(4096)
-            conn.sendall(localizacao.encode("utf-8"))
+            read_line(reader)
+            send_line(conn, localizacao)
 
-            conn.recv(4096)
-            conn.sendall(alerta.encode("utf-8"))
+            read_line(reader)
+            send_line(conn, alerta)
 
-            welcome = conn.recv(4096)
+            welcome = read_line(reader)
             if welcome:
-                self.ui_queue.put(welcome.decode("utf-8", errors="ignore"))
+                self.ui_queue.put(welcome)
 
             self.registered = True
             self.root.after(0, self._on_registered)
@@ -642,17 +723,17 @@ class ChatApp:
         self.append_chat("[*] Registro concluido. Canal pronto para operacao.")
 
     def _recv_loop(self) -> None:
-        if not self.conn:
+        if not self.conn or not self.reader:
             return
 
         while not self.stop_event.is_set():
             try:
-                data = self.conn.recv(8192)
+                data = read_line(self.reader)
                 if not data:
                     self.ui_queue.put("[!] Servidor desconectado.")
                     self.root.after(0, self.disconnect)
                     break
-                self.ui_queue.put(data.decode("utf-8", errors="ignore"))
+                self.ui_queue.put(data)
             except OSError:
                 if not self.stop_event.is_set():
                     self.ui_queue.put("[!] Conexao encerrada.")
@@ -705,7 +786,7 @@ class ChatApp:
             return
 
         try:
-            self.conn.sendall(message.encode("utf-8"))
+            send_line(self.conn, message)
         except OSError as exc:
             self.append_chat(f"[!] Falha ao enviar: {exc}")
             self.disconnect()
@@ -858,13 +939,20 @@ class ChatApp:
         if self.conn:
             try:
                 if self.registered:
-                    self.conn.sendall("/sair".encode("utf-8"))
+                    send_line(self.conn, "/sair")
             except OSError:
                 pass
             try:
                 self.conn.close()
             except OSError:
                 pass
+
+        if self.reader:
+            try:
+                self.reader.close()
+            except OSError:
+                pass
+            self.reader = None
 
         self.conn = None
         self.connected = False

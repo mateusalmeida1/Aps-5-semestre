@@ -13,6 +13,8 @@ Funcionalidades:
 from __future__ import annotations
 
 import argparse
+import datetime
+import os
 import socket
 import threading
 import sys
@@ -23,6 +25,90 @@ HOST = "127.0.0.1"  # Endereço IP do servidor
 PORT = 5000          # Deve coincidir com o PORT do servidor
 
 ALERTA_VALIDOS = ("NORMAL", "ALERTA", "CRÍTICO", "CRITICO")
+
+chat_history: list[str] = []
+chat_history_lock = threading.Lock()
+chat_filter = ""
+chat_filter_lock = threading.Lock()
+
+
+def send_line(conn: socket.socket, message: str) -> None:
+    conn.sendall(f"{message}\n".encode("utf-8"))
+
+
+def read_line(reader) -> str:
+    data = reader.readline()
+    if not data:
+        return ""
+    return data.strip()
+
+
+def set_chat_filter(value: str) -> None:
+    global chat_filter
+    with chat_filter_lock:
+        chat_filter = value.strip().lower()
+
+
+def get_chat_filter() -> str:
+    with chat_filter_lock:
+        return chat_filter
+
+
+def message_matches_filter(message: str) -> bool:
+    current_filter = get_chat_filter()
+    return not current_filter or current_filter in message.lower()
+
+
+def add_history(message: str) -> None:
+    with chat_history_lock:
+        chat_history.append(message)
+
+
+def print_history() -> None:
+    current_filter = get_chat_filter()
+    with chat_history_lock:
+        items = list(chat_history)
+
+    print("\n=== Histórico local ===")
+    shown = 0
+    for message in items:
+        if current_filter and current_filter not in message.lower():
+            continue
+        print(message)
+        shown += 1
+
+    if shown == 0:
+        print("Nenhuma mensagem encontrada.")
+    print("=== Fim do histórico ===")
+
+
+def export_history(file_path: str | None = None) -> tuple[bool, str]:
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    target_path = file_path.strip() if file_path else f"historico_chat_{timestamp}.log"
+    target_path = os.path.abspath(target_path)
+
+    current_filter = get_chat_filter()
+    with chat_history_lock:
+        items = list(chat_history)
+
+    selected = []
+    for message in items:
+        if current_filter and current_filter not in message.lower():
+            continue
+        selected.append(message)
+
+    try:
+        with open(target_path, "w", encoding="utf-8") as f:
+            f.write("Historico local do cliente\n")
+            f.write(f"Gerado em: {datetime.datetime.now().isoformat(timespec='seconds')}\n")
+            f.write(f"Filtro ativo: {current_filter or 'nenhum'}\n")
+            f.write("-" * 40 + "\n")
+            for message in selected:
+                f.write(message + "\n")
+    except OSError as exc:
+        return False, f"Falha ao exportar histórico: {exc}"
+
+    return True, target_path
 
 
 def ask_server_address(default_host: str = HOST, default_port: int = PORT) -> tuple[str, int]:
@@ -46,20 +132,22 @@ def ask_server_address(default_host: str = HOST, default_port: int = PORT) -> tu
         print("[!] Porta fora do intervalo válido (1-65535).")
 
 
-def receive_messages(conn: socket.socket, stop_event: threading.Event) -> None:
+def receive_messages(reader, stop_event: threading.Event) -> None:
     """
     Thread de recebimento: fica em loop recebendo mensagens do servidor
     e as imprimindo no terminal até que a conexão seja encerrada.
     """
     while not stop_event.is_set():
         try:
-            data = conn.recv(4096)
+            data = read_line(reader)
             if not data:
                 # Servidor encerrou a conexão
                 print("\n[!] Servidor desconectado.")
                 stop_event.set()
                 break
-            print(f"\n{data.decode('utf-8')}")
+            add_history(data)
+            if message_matches_filter(data):
+                print(f"\n{data}")
         except OSError:
             if not stop_event.is_set():
                 print("\n[!] Conexão encerrada.")
@@ -80,7 +168,7 @@ def auto_send_messages(conn: socket.socket, stop_event: threading.Event, usernam
             break
         time.sleep(1.5)
         try:
-            conn.sendall(message.encode("utf-8"))
+            send_line(conn, message)
         except OSError:
             stop_event.set()
             break
@@ -92,6 +180,7 @@ def auto_send_messages(conn: socket.socket, stop_event: threading.Event, usernam
 
 def register(
     conn: socket.socket,
+    reader,
     username: str | None = None,
     localizacao: str | None = None,
     alerta: str | None = None,
@@ -104,23 +193,23 @@ def register(
     prompts_answered = 0
     while prompts_answered < 3:
         try:
-            data = conn.recv(4096)
+            data = read_line(reader)
         except OSError:
             print("[!] Falha ao receber prompt do servidor.")
             sys.exit(1)
 
-        prompt = data.decode("utf-8")
-        print(prompt, end="", flush=True)
+        prompt = data
+        print(prompt)
 
         if prompts_answered == 0:
             if username is None:
                 username = input().strip() or "Anônimo"
-            conn.sendall(username.encode("utf-8"))
+            send_line(conn, username)
 
         elif prompts_answered == 1:
             if localizacao is None:
                 localizacao = input().strip() or "Desconhecido"
-            conn.sendall(localizacao.encode("utf-8"))
+            send_line(conn, localizacao)
 
         elif prompts_answered == 2:
             if alerta is None:
@@ -130,7 +219,7 @@ def register(
             if alerta not in ALERTA_VALIDOS:
                 print(f"[!] Valor inválido; usando NORMAL.")
                 alerta = "NORMAL"
-            conn.sendall(alerta.encode("utf-8"))
+            send_line(conn, alerta)
 
         prompts_answered += 1
 
@@ -162,6 +251,7 @@ def main(argv: list[str] | None = None) -> None:
     try:
         conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         conn.connect((host, port))
+        reader = conn.makefile("r", encoding="utf-8", newline="\n")
     except ConnectionRefusedError:
         print(f"[!] Não foi possível conectar ao servidor {host}:{port}.")
         print("    Verifique se o servidor está em execução.")
@@ -170,13 +260,13 @@ def main(argv: list[str] | None = None) -> None:
     print(f"[+] Conectado ao servidor {host}:{port}\n")
 
     # Fase de registro (bloqueante, sequencial)
-    register(conn, username=args.user, localizacao=args.local, alerta=args.alerta)
+    register(conn, reader, username=args.user, localizacao=args.local, alerta=args.alerta)
 
     # Exibe a mensagem de boas-vindas enviada após o registro
     try:
-        welcome = conn.recv(4096)
+        welcome = read_line(reader)
         if welcome:
-            print(f"\n{welcome.decode('utf-8')}\n")
+            print(f"\n{welcome}\n")
     except OSError:
         pass
 
@@ -184,7 +274,7 @@ def main(argv: list[str] | None = None) -> None:
     stop_event = threading.Event()
 
     recv_thread = threading.Thread(
-        target=receive_messages, args=(conn, stop_event), daemon=True
+        target=receive_messages, args=(reader, stop_event), daemon=True
     )
     recv_thread.start()
 
@@ -199,7 +289,7 @@ def main(argv: list[str] | None = None) -> None:
             sender_thread.start()
             sender_thread.join()
         else:
-            print("Comandos: /online  /msg <usuário> <mensagem>  /sair\n")
+            print("Comandos: /online  /msg <usuário> <mensagem>  /sair  /filtro <termo>  /historico  /exportar [arquivo]\n")
 
             # ── Loop de envio (thread principal) ─────────────────────────────────────
             try:
@@ -213,8 +303,41 @@ def main(argv: list[str] | None = None) -> None:
                     if stop_event.is_set():
                         break
 
+                    if message.startswith("/filtro"):
+                        parts = message.split(" ", 1)
+                        if len(parts) == 1 or not parts[1].strip():
+                            current_filter = get_chat_filter()
+                            print(f"[*] Filtro atual: {current_filter or 'nenhum'}")
+                        else:
+                            value = parts[1].strip()
+                            if value.lower() in ("limpar", "off", "desativar"):
+                                set_chat_filter("")
+                                print("[*] Filtro desativado.")
+                            else:
+                                set_chat_filter(value)
+                                print(f"[*] Filtro ativado: {value}")
+                        continue
+
+                    if message.strip() == "/historico":
+                        print_history()
+                        continue
+
+                    if message.startswith("/exportar"):
+                        parts = message.split(" ", 1)
+                        custom_path = parts[1].strip() if len(parts) > 1 else None
+                        ok, result = export_history(custom_path)
+                        if ok:
+                            print(f"[*] Histórico exportado para: {result}")
+                        else:
+                            print(f"[!] {result}")
+                        continue
+
+                    if message.strip() == "/ajuda":
+                        print("Comandos: /online  /msg <usuário> <mensagem>  /sair  /filtro <termo>  /historico  /exportar [arquivo]")
+                        continue
+
                     try:
-                        conn.sendall(message.encode("utf-8"))
+                        send_line(conn, message)
                     except OSError:
                         print("[!] Falha ao enviar mensagem.")
                         break
@@ -227,12 +350,16 @@ def main(argv: list[str] | None = None) -> None:
             except KeyboardInterrupt:
                 print("\n[*] Interrompido pelo usuário.")
                 try:
-                    conn.sendall("/sair".encode("utf-8"))
+                    send_line(conn, "/sair")
                 except OSError:
                     pass
 
     finally:
         stop_event.set()
+        try:
+            reader.close()
+        except Exception:
+            pass
         conn.close()
         print("[*] Conexão encerrada.")
 

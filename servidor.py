@@ -28,6 +28,23 @@ client_thread_count = 0
 client_thread_count_lock = threading.Lock()
 
 
+def send_line(conn: socket.socket, message: str) -> None:
+    """Envia uma linha de texto para o cliente, terminada em newline."""
+    timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+    try:
+        conn.sendall(f"[{timestamp}] {message}\n".encode("utf-8"))
+    except OSError:
+        pass
+
+
+def recv_line(reader) -> str:
+    """Lê uma linha do cliente e remove espaços extras."""
+    data = reader.readline()
+    if not data:
+        return ""
+    return data.strip()
+
+
 def log_message(message: str) -> None:
     """Grava *message* em log.txt com timestamp."""
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -38,28 +55,18 @@ def log_message(message: str) -> None:
 
 def broadcast(message: str, sender_conn: socket.socket | None = None) -> None:
     """Envia *message* para todos os clientes (exceto o remetente, se fornecido)."""
-    timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-    full_message = f"[{timestamp}] {message}"
     log_message(message)
 
     with clients_lock:
         for conn in list(clients.keys()):
             if conn is sender_conn:
                 continue
-            try:
-                conn.sendall(full_message.encode("utf-8"))
-            except OSError:
-                # Conexão perdida; será tratada no handle_client
-                pass
+            send_line(conn, message)
 
 
 def send_to(conn: socket.socket, message: str) -> None:
     """Envia *message* diretamente para um único cliente."""
-    timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-    try:
-        conn.sendall(f"[{timestamp}] {message}".encode("utf-8"))
-    except OSError:
-        pass
+    send_line(conn, message)
 
 
 def list_online() -> str:
@@ -82,19 +89,18 @@ def handle_client(conn: socket.socket, addr: tuple) -> None:
     """Gerencia toda a comunicação com um único cliente conectado."""
     global client_thread_count
     print(f"[+] Nova conexão: {addr}")
+    reader = conn.makefile("r", encoding="utf-8", newline="\n")
 
     try:
         # ── Etapa de registro ────────────────────────────────────────────────
-        conn.sendall("Informe seu nome de usuário: ".encode("utf-8"))
-        username = conn.recv(1024).decode("utf-8").strip()
+        send_line(conn, "Informe seu nome de usuário:")
+        username = recv_line(reader)
 
-        conn.sendall("Informe sua localização (ex: Sala 3 / Torre A): ".encode("utf-8"))
-        localizacao = conn.recv(1024).decode("utf-8").strip()
+        send_line(conn, "Informe sua localização (ex: Sala 3 / Torre A):")
+        localizacao = recv_line(reader)
 
-        conn.sendall(
-            "Informe o nível de alerta (NORMAL / ALERTA / CRÍTICO): ".encode("utf-8")
-        )
-        alerta = conn.recv(1024).decode("utf-8").strip().upper()
+        send_line(conn, "Informe o nível de alerta (NORMAL / ALERTA / CRÍTICO):")
+        alerta = recv_line(reader).upper()
         if alerta not in ("NORMAL", "ALERTA", "CRÍTICO", "CRITICO"):
             alerta = "NORMAL"
         # Normaliza variante sem acento
@@ -117,14 +123,12 @@ def handle_client(conn: socket.socket, addr: tuple) -> None:
         # ── Loop principal de mensagens ──────────────────────────────────────
         while True:
             try:
-                data = conn.recv(4096)
+                message = recv_line(reader)
             except OSError:
                 break
 
-            if not data:
+            if not message:
                 break
-
-            message = data.decode("utf-8").strip()
 
             # ── Comandos ────────────────────────────────────────────────────
             if message == "/sair":
@@ -208,6 +212,10 @@ def handle_client(conn: socket.socket, addr: tuple) -> None:
             print(f"[-] {leave_msg} ({addr})")
             # log_message is called inside broadcast
             broadcast(leave_msg)
+        try:
+            reader.close()
+        except Exception:
+            pass
         conn.close()
 
 
