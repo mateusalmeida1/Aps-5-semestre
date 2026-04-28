@@ -20,6 +20,7 @@ import os
 import queue
 import socket
 import struct
+import sys
 import tempfile
 import threading
 import time
@@ -51,6 +52,40 @@ def configure_tk_env_windows() -> None:
 
     if os.environ.get("TCL_LIBRARY") and os.environ.get("TK_LIBRARY"):
         return
+
+    # In PyInstaller builds, Tk assets can be in different folders depending on
+    # one-file vs one-dir mode and PyInstaller runtime layout.
+    if getattr(sys, "frozen", False):
+        candidate_roots: list[str] = []
+
+        meipass = getattr(sys, "_MEIPASS", "")
+        if meipass:
+            candidate_roots.append(meipass)
+
+        exe_dir = os.path.dirname(sys.executable)
+        candidate_roots.append(exe_dir)
+        candidate_roots.append(os.path.join(exe_dir, "_internal"))
+
+        candidate_pairs = []
+        for root in candidate_roots:
+            candidate_pairs.append(
+                (
+                    os.path.join(root, "_tcl_data", "tcl8.6"),
+                    os.path.join(root, "_tcl_data", "tk8.6"),
+                )
+            )
+            candidate_pairs.append(
+                (
+                    os.path.join(root, "tcl", "tcl8.6"),
+                    os.path.join(root, "tcl", "tk8.6"),
+                )
+            )
+
+        for tcl_candidate, tk_candidate in candidate_pairs:
+            if os.path.isdir(tcl_candidate) and os.path.isdir(tk_candidate):
+                os.environ.setdefault("TCL_LIBRARY", tcl_candidate)
+                os.environ.setdefault("TK_LIBRARY", tk_candidate)
+                return
 
     base_python = os.path.dirname(os.path.dirname(os.__file__))
     tcl_dir = os.path.join(base_python, "tcl")

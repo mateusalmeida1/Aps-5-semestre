@@ -1,0 +1,37 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "rebuild-launcher",
+			"type": "shell",
+			"command": ".\\.venv\\Scripts\\pyinstaller.exe",
+			"args": [
+				"launcher.spec"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "build"
+		},
+		{
+			"label": "rebuild-launcher-noconfirm",
+			"type": "shell",
+			"command": ".\\.venv\\Scripts\\pyinstaller.exe",
+			"args": [
+				"-y",
+				"launcher.spec"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "build"
+		},
+		{
+			"label": "validate-launcher",
+			"type": "shell",
+			"command": "Get-Item"
+		}
+	]
+}
