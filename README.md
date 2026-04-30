@@ -40,6 +40,26 @@ O sistema permite comunicação em tempo real entre inspetores ambientais e uma 
 
 ## Como executar (Windows + PowerShell)
 
+## Uso em dois computadores na mesma rede
+
+Se os dois PCs estiverem ligados ao mesmo roteador, escolha um deles para ser o servidor.
+
+No computador servidor:
+
+```powershell
+& ".\.venv\Scripts\python.exe" ".\servidor.py" --port 5000
+```
+
+No segundo computador, conecte o cliente ao IP do servidor na rede local:
+
+```powershell
+& ".\.venv\Scripts\python.exe" ".\cliente.py" --host 192.168.0.10 --port 5000
+```
+
+Ou use a interface gráfica e preencha o IP e a porta no painel de conexão.
+
+Se o Windows bloquear a conexão, libere a porta TCP 5000 no Firewall do computador servidor.
+
 ### Abrir tudo de uma vez
 
 Se você quiser iniciar o ambiente completo com um clique, execute o launcher:
@@ -61,6 +81,8 @@ Set-Location -LiteralPath "C:\Users\mateu\OneDrive\Área de Trabalho\aps 5\Aps-5
 ```powershell
 & ".\.venv\Scripts\python.exe" ".\servidor.py"
 ```
+
+Se quiser outro número de porta, use `--port` tanto no servidor quanto nos clientes.
 
 Saída esperada:
 
@@ -152,6 +174,7 @@ Correto:
 - O cliente de terminal também mantém histórico local e aceita filtro de mensagens com /filtro e /historico.
 - O cliente de terminal permite exportar o histórico local com /exportar (com nome automático ou caminho informado).
 - Para conexões remotas, use o IP da máquina do servidor ao abrir cliente.py ou interace.py.
+- Para conexões remotas, use o IP da máquina do servidor ao abrir cliente.py ou interace.py, e abra a mesma porta no Firewall do Windows.
 - O nível CRITICO (sem acento) também é aceito e normalizado para CRÍTICO.
 - O launcher abre dois clientes com cadastro automático para facilitar testes rápidos.
 - A interface gráfica mantém o histórico local das mensagens, permite filtro por palavra-chave e agora possui botão para exportação do histórico em arquivo.

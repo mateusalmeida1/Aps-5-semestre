@@ -40,18 +40,14 @@ def _spawn(extra_args: list[str] | None = None, new_console: bool = False, hide_
 	)
 
 
-def _spawn_server() -> subprocess.Popen[bytes]:
-	return _spawn(["--server"], new_console=False, hide_console=True)
-
-
-def _spawn_client(user: str, local: str, alerta: str) -> subprocess.Popen[bytes]:
+def _spawn_client(user: str, local: str, alerta: str, host: str = HOST, port: int = PORT) -> subprocess.Popen[bytes]:
 	return _spawn(
 		[
 			"--gui-client",
 			"--host",
-			HOST,
+			host,
 			"--port",
-			str(PORT),
+			str(port),
 			"--user",
 			user,
 			"--local",
@@ -61,6 +57,10 @@ def _spawn_client(user: str, local: str, alerta: str) -> subprocess.Popen[bytes]
 		],
 		new_console=False,
 	)
+
+
+def _spawn_server(port: int) -> subprocess.Popen[bytes]:
+	return _spawn(["--server", "--port", str(port)], new_console=False, hide_console=True)
 
 
 def _terminate_process(process: subprocess.Popen[bytes]) -> None:
@@ -88,7 +88,7 @@ def main() -> None:
 	args, _remaining = parser.parse_known_args()
 
 	if args.server:
-		servidor.main()
+		servidor.main(port=args.port)
 		return
 
 	if args.gui_client:
@@ -105,7 +105,7 @@ def main() -> None:
 		return
 
 	print("[launcher] Iniciando servidor e duas interfaces...")
-	server_process = _spawn_server()
+	server_process = _spawn_server(args.port)
 	time.sleep(1.2)
 
 	if server_process.poll() is not None:
@@ -113,8 +113,8 @@ def main() -> None:
 		return
 
 	client_processes = [
-		_spawn_client("Usuário 1", "Sala 1", "NORMAL"),
-		_spawn_client("Usuário 2", "Sala 2", "ALERTA"),
+		_spawn_client("Usuário 1", "Sala 1", "NORMAL", host=HOST, port=args.port),
+		_spawn_client("Usuário 2", "Sala 2", "ALERTA", host=HOST, port=args.port),
 	]
 
 	print("[launcher] Interfaces abertas.")

@@ -9,10 +9,11 @@ Responsabilidades:
   - Registrar todas as mensagens em log.txt com timestamp
 """
 
+import datetime
+import argparse
+import os
 import socket
 import threading
-import datetime
-import os
 import base64
 
 # ─── Configurações ────────────────────────────────────────────────────────────
@@ -219,7 +220,7 @@ def handle_client(conn: socket.socket, addr: tuple) -> None:
         conn.close()
 
 
-def main() -> None:
+def main(port: int = PORT) -> None:
     """Inicializa e executa o servidor."""
     global client_thread_count
     # Cria o arquivo de log se ainda não existir
@@ -229,10 +230,10 @@ def main() -> None:
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind((HOST, PORT))
+    server.bind((HOST, port))
     server.listen()
 
-    print(f"[*] Servidor iniciado em {HOST}:{PORT}")
+    print(f"[*] Servidor iniciado em {HOST}:{port}")
     print(f"[*] Logs salvos em: {os.path.abspath(LOG_FILE)}")
 
     try:
@@ -254,4 +255,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Servidor de chat TCP/IP")
+    parser.add_argument("--port", type=int, default=PORT)
+    args = parser.parse_args()
+    main(port=args.port)
